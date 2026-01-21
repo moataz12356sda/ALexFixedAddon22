@@ -19,7 +19,7 @@ ServerActive = True
 Serverip = 'iot.skarpt.net'
 # Serverip ='192.168.1.174'
 Serverport = 5029
-broker_address = "192.168.0.105"
+broker_address = "192.168.0.106"
 broker_port = 1883
 responsePacket = ''
 response2 = ''
@@ -27,7 +27,7 @@ response2 = ''
 # INTERNAL_BACKUP_DATABASE_NAME = "Hold"
 # USERNAME_DATABASE = "skarpt"
 # PASSWORD_DATABASE = "skarpt"
-# DATABASE_IP = '192.168.1.10'
+# DATABASE_IP = '192.168.0.106'
 # measurement = "Tzone"
 # DATABASE_PORT = 8086
 
@@ -360,27 +360,64 @@ def check_packet(data):
 def preprocess_packet(data):
     global full_packet_list
 
-    data = str(binascii.hexlify(data).decode())
-    print(data)
-    data = data.strip()
-    if data.startswith("545a") and data.endswith("0d0a"):
-        full_packet_list = []
-        if check_packet(data):
-            ConvertPacketIntoElemets(data)
-        return [binascii.unhexlify(responsePacket.strip()), binascii.unhexlify(response2.strip())]
-    elif data.endswith("0d0a") and not data.startswith("545a") and full_packet_list:
-        collecting_packet = ''
-        for packet_part in full_packet_list:
-            collecting_packet += packet_part
-        collecting_packet += data
-        if check_packet(collecting_packet):
-            ConvertPacketIntoElemets(collecting_packet)
-        full_packet_list = []
-        return [binascii.unhexlify(responsePacket.strip()), binascii.unhexlify(response2.strip())]
-    else:
-        print("Wrong packet Start and end")
-        pass
+    # convert raw bytes to hex string
+    hex_data = binascii.hexlify(data).decode().lower()
+    print(hex_data)
 
+    # --- CASE 1: start of packet but no end yet ---
+    if hex_data.startswith("545a") and not hex_data.endswith("0d0a"):
+        # new packet started
+        # drop any old incomplete data
+        full_packet_list = [hex_data]
+        return 0
+
+    # --- CASE 2: continuation of packet ---
+    if not hex_data.startswith("545a") and full_packet_list:
+        full_packet_list.append(hex_data)
+
+        collected = "".join(full_packet_list)
+
+        # still not complete → wait
+        if not collected.endswith("0d0a"):
+            return 0
+
+        # completed packet received
+        full_packet_list = []
+
+        # SAFETY CHECKS
+        if collected.count("545a") != 1:
+            print("ERROR: multiple headers detected, dropping packet")
+            return 0
+
+        if not collected.startswith("545a") or not collected.endswith("0d0a"):
+            print("ERROR: invalid framing, dropping packet")
+            return 0
+
+        # VALID packet
+        ConvertPacketIntoElemets(collected)
+
+        return [
+            binascii.unhexlify(responsePacket.strip()),
+            binascii.unhexlify(response2.strip())
+        ]
+
+    # --- CASE 3: full packet in one recv ---
+    if hex_data.startswith("545a") and hex_data.endswith("0d0a"):
+
+        # SAFETY CHECKS
+        if hex_data.count("545a") != 1:
+            print("ERROR: multiple headers detected, dropping packet")
+            return 0
+
+        ConvertPacketIntoElemets(hex_data)
+
+        return [
+            binascii.unhexlify(responsePacket.strip()),
+            binascii.unhexlify(response2.strip())
+        ]
+
+    # --- CASE 4: garbage or unexpected data ---
+    print("Ignoring data (no valid packet start)")
     return 0
 
 
