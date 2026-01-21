@@ -19,7 +19,7 @@ ServerActive = True
 Serverip = 'iot.skarpt.net'
 # Serverip ='192.168.1.174'
 Serverport = 5029
-broker_address = "192.168.0.106"
+broker_address = "192.168.0.105"
 broker_port = 1883
 responsePacket = ''
 response2 = ''
@@ -451,3 +451,4 @@ class EchoServer(asyncore.dispatcher):
 
 server = EchoServer('', port)
 asyncore.loop()
+
